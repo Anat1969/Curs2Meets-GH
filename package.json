@@ -1,0 +1,25 @@
+{
+  "name": "curs2meets-gh",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:github": "vite build --base=./ --outDir app --emptyOutDir",
+    "preview": "vite preview",
+    "test:e2e": "node tests/e2e.cjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.98.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.8.3",
+    "vite": "^5.4.19"
+  }
+}
