@@ -4,6 +4,7 @@ import { supabase, fetchSubmissions, type Submission } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 import { toast } from "../lib/toast";
 import { topics } from "../data/course";
+import { useMembership } from "../lib/classroom";
 import { Close } from "./icons";
 
 const label = (s: Submission) => {
@@ -42,6 +43,7 @@ export function Lightbox({ s, onClose }: { s: Submission | null; onClose: () => 
 
 export function Cards({ list, onOpen, onDelete, showTopic }: { list: Submission[]; onOpen: (s: Submission) => void; onDelete: (s: Submission) => void; showTopic?: boolean }) {
   const { user } = useAuth();
+  const { admin } = useMembership();
   return (
     <div className="gal">
       {list.map((s) => (
@@ -50,7 +52,7 @@ export function Cards({ list, onOpen, onDelete, showTopic }: { list: Submission[
           <div className="in">
             <div className="meta"><b>{s.display_name}</b>{showTopic && <span>· {label(s)}</span>}<span className="when">{new Date(s.created_at).toLocaleDateString("he-IL")}</span></div>
             <p>{s.description}</p>
-            {user?.id === s.user_id && (
+            {(user?.id === s.user_id || admin) && (
               <button className="press btn" style={{ justifySelf: "start", padding: "4px 10px", fontSize: 13 }}
                 onClick={(e) => { e.stopPropagation(); if (confirm("למחוק את העבודה? אי אפשר לשחזר.")) onDelete(s); }}>מחיקה</button>
             )}
@@ -69,6 +71,7 @@ export async function remove(s: Submission) {
 
 export default function TopicGallery({ session, topic }: { session: string; topic: string }) {
   const { user } = useAuth();
+  const m = useMembership();
   const [list, setList] = useState<Submission[] | null>(null);
   const [err, setErr] = useState("");
   const [open, setOpen] = useState<Submission | null>(null);
@@ -105,7 +108,9 @@ export default function TopicGallery({ session, topic }: { session: string; topi
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      {user ? (
+      {user && m.ready && !m.member ? (
+        <div className="tone tone-neutral"><p style={{ margin: 0 }}><b>החשבון עוד לא משויך לכיתה.</b><br />פתחו את הקישור האישי שקיבלתם מענת בוואטסאפ או במייל, והעלאה תיפתח.</p></div>
+      ) : user ? (
         <div className="card upload">
           <div style={{ display: "grid", gap: 10 }}>
             <b>שתפו את התרגיל שלכם</b>
@@ -120,7 +125,7 @@ export default function TopicGallery({ session, topic }: { session: string; topi
         </div>
       ) : (
         <div className="tone tone-neutral" style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-          <p style={{ margin: 0 }}>כדי להעלות תרגיל, נכנסים עם אימייל וסיסמה. הצפייה פתוחה לכולם.</p>
+          <p style={{ margin: 0 }}>הצפייה פתוחה לכולם.<br />כדי להעלות תרגיל, פותחים את הקישור האישי מענת, או נכנסים כאן אם כבר הצטרפתם.</p>
           <a className="press btn btn-main" href="#/auth">כניסה לסטודנטים</a>
         </div>
       )}

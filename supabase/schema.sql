@@ -29,3 +29,23 @@ insert into storage.buckets (id, name, public) values ('submissions', 'submissio
 create policy "Submission images publicly accessible" on storage.objects for select using (bucket_id = 'submissions');
 create policy "Users can upload submission images" on storage.objects for insert with check (bucket_id = 'submissions' and auth.uid()::text = (storage.foldername(name))[1]);
 create policy "Users can delete own submission images" on storage.objects for delete using (bucket_id = 'submissions' and auth.uid()::text = (storage.foldername(name))[1]);
+
+-- 03.11.2026: כיתה. רשימה, מנהלת, קישור הזמנה אישי, והעלאה רק לחברי כיתה.
+create table public.class_admins (user_id uuid primary key references auth.users(id) on delete cascade, created_at timestamptz not null default now());
+alter table public.class_admins enable row level security;
+create policy "Admins see own admin row" on public.class_admins for select using (user_id = auth.uid());
+create table public.class_roster (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (char_length(name) between 1 and 80),
+  email text check (email is null or email ~* '^[^@\s]+@[^@\s]+\.[^@\s]+$'),
+  phone text check (phone is null or phone ~ '^\+?[0-9]{8,15}$'),
+  role text not null default 'student' check (role in ('student','admin')),
+  token text not null unique default replace(gen_random_uuid()::text, '-', ''),
+  invited_at timestamptz, invited_via text check (invited_via is null or invited_via in ('whatsapp','email','link')),
+  user_id uuid unique references auth.users(id) on delete set null, joined_at timestamptz,
+  created_at timestamptz not null default now()
+);
+-- פונקציות: is_class_admin(), class_member(), class_invite(token) לקריאה ציבורית של שם ההזמנה בלבד,
+-- ו-class_claim(token) למחוברים בלבד: משייכת את החשבון לשורה, ומנהלת מקבלת שורה ב-class_admins.
+-- מדיניות: מנהלת מנהלת את הרשימה, סטודנט/ית רואה רק את השורה שלו/ה,
+-- "Only class members add submissions" (restrictive, insert), ומנהלת יכולה למחוק כל עבודה.

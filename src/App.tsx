@@ -9,6 +9,8 @@ import IntroPage from "./pages/IntroPage";
 import TopicPage from "./pages/TopicPage";
 import GalleryPage from "./pages/GalleryPage";
 import AuthPage from "./pages/AuthPage";
+import JoinPage from "./pages/JoinPage";
+import ClassPage from "./pages/ClassPage";
 import NotFound from "./pages/NotFound";
 
 function Page() {
@@ -21,6 +23,8 @@ function Page() {
   if (a === "t" && b) return <TopicPage key={b} k={b} />;
   if (a === "gallery") return <GalleryPage />;
   if (a === "auth") return <AuthPage />;
+  if (a === "join" && b) return <JoinPage token={b} />;
+  if (a === "class") return <ClassPage />;
   return <NotFound />;
 }
 

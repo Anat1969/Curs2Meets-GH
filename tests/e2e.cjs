@@ -9,10 +9,29 @@ const fails = [];
 const ok = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if (!cond) fails.push(msg); };
 const SUB = [{ id: 'x1', user_id: 'u1', session_id: 'a', topic_id: '1', description: 'קולקציה בהשראת חוף אשדוד', image_url: BASE + 'slides/a1/06.webp', created_at: '2026-03-08T20:49:48Z' }];
 
+const ROSTER = [
+  { id: 'r0', name: 'ענת שטיבלמן', email: null, phone: null, role: 'admin', token: 'adm', invited_at: null, invited_via: null, user_id: 'admin1', joined_at: '2026-11-03T10:00:00Z', created_at: '2026-11-03T09:00:00Z' },
+  { id: 'r1', name: 'נועה כהן', email: 'noa@gmail.com', phone: '972501234567', role: 'student', token: 'tok1', invited_at: null, invited_via: null, user_id: null, joined_at: null, created_at: '2026-11-03T09:01:00Z' },
+  { id: 'r2', name: 'דניאל לוי', email: 'daniel@gmail.com', phone: null, role: 'student', token: 'tok2', invited_at: '2026-11-03T09:30:00Z', invited_via: 'email', user_id: 'u2', joined_at: '2026-11-03T09:40:00Z', created_at: '2026-11-03T09:02:00Z' },
+];
+const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+const FAKE_JWT = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: 'admin1', email: 'anat@example.com', role: 'authenticated', aud: 'authenticated', exp: 4102444800 })}.sig`;
+const SESSION = { access_token: FAKE_JWT, refresh_token: 'r', token_type: 'bearer', expires_in: 3600, expires_at: 4102444800, user: { id: 'admin1', email: 'anat@example.com', aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {} } };
+
 async function mock(p) {
   await p.route('**/appofapp-gh.vercel.app/**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: menu }));
   await p.route('**/*.supabase.co/rest/v1/student_submissions**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SUB) }));
   await p.route('**/*.supabase.co/rest/v1/profiles**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ user_id: 'u1', display_name: 'נועה' }]) }));
+  await p.route('**/*.supabase.co/rest/v1/rpc/class_invite**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ name: 'נועה כהן', email: 'noa@gmail.com', role: 'student', joined: false }]) }));
+  await p.route('**/*.supabase.co/rest/v1/rpc/is_class_admin**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: String(!!p.__admin) }));
+  await p.route('**/*.supabase.co/rest/v1/rpc/class_member**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: String(!!p.__admin) }));
+  await p.route('**/*.supabase.co/rest/v1/class_roster**', (r) => {
+    const m = r.request().method();
+    if (m === 'GET') return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ROSTER) });
+    if (m === 'POST') { p.__inserted = JSON.parse(r.request().postData()); return r.fulfill({ status: 201, contentType: 'application/json', body: '[]' }); }
+    if (m === 'PATCH') { p.__patched = JSON.parse(r.request().postData()); return r.fulfill({ status: 204, body: '' }); }
+    return r.fulfill({ status: 204, body: '' });
+  });
   await p.route('**/*.supabase.co/auth/**', (r) => r.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_grant', error_description: 'Invalid login credentials', msg: 'Invalid login credentials' }) }));
 }
 
@@ -112,6 +131,47 @@ async function mock(p) {
     ok(await p.evaluate(() => [...document.querySelectorAll('button, .press, .field')].every((b) => getComputedStyle(b).borderRadius === '0px')), 'כל הכפתורים והשדות מרובעים');
     ok(await p.locator('.num').count() > 10, 'מספרים מודגשים אוטומטית');
 
+    // הזמנה אישית: הקישור מזהה את הסטודנטית וממלא את הטופס
+    await p.goto(BASE + '#/join/tok1', { waitUntil: 'networkidle' });
+    await p.waitForSelector('.auth-form');
+    ok((await p.locator('h1').innerText()).includes('שלום נועה'), 'קישור אישי: פנייה בשם');
+    ok((await p.locator('input[name=email]').inputValue()) === 'noa@gmail.com' && (await p.locator('input[name=name]').inputValue()) === 'נועה כהן', 'קישור אישי: אימייל ושם ממולאים מראש');
+    ok((await p.locator('input[name=password]').getAttribute('autocomplete')) === 'new-password', 'קישור אישי: מילוי אוטומטי של Chrome לסיסמה חדשה');
+    await p.locator('input[name=password]').fill('abcdef');
+    await p.locator('.pass-eye').click();
+    ok((await p.locator('input[name=password]').getAttribute('type')) === 'text', 'כפתור הצגת סיסמה');
+    await p.goto(BASE + '#/class', { waitUntil: 'networkidle' });
+    ok(await p.getByText('הדף הזה למנהלת הכיתה בלבד').isVisible(), 'ניהול הכיתה חסום למי שאינו מנהל');
+
+    // מנהלת הכיתה: ייבוא, תצוגה מקדימה ושליחה
+    const a = await b.newPage({ viewport: { width: 1440, height: 900 } });
+    a.__admin = true;
+    await a.context().route('https://wa.me/**', (r) => { a.__wa = decodeURIComponent(r.request().url()); r.fulfill({ status: 200, contentType: 'text/html', body: 'ok' }); });
+    await mock(a);
+    a.on('pageerror', (e) => errors.push(e.message));
+    await a.addInitScript((s) => localStorage.setItem('sb-tnvwpjcilwmtigfxhomx-auth-token', JSON.stringify(s)), SESSION);
+    await a.goto(BASE + '#/class', { waitUntil: 'networkidle' });
+    await a.waitForSelector('#roster-paste', { timeout: 6000 }).catch(() => {});
+    ok(await a.locator('#roster-paste').count() === 1, 'ניהול הכיתה נפתח למנהלת');
+    ok((await a.locator('.kpi-row b').allInnerTexts()).join(',') === '2,1,1', 'מספרי הכיתה: 2 ברשימה, 1 הוזמן, 1 הצטרף');
+    await a.locator('#roster-paste').fill('שם\tמייל\tטלפון\nמאיה פרץ\tmaya@gmail.com\t052-765-4321\nנועה כהן\tnoa@gmail.com\nיואב\t\t\nרון\tron@@x');
+    const tags = await a.locator('.roster.mini td:last-child').allInnerTexts();
+    ok(tags.join('|') === 'תקין|כבר ברשימה|חסר מייל או טלפון|מייל או טלפון לא תקינים', 'תצוגה מקדימה: תקין, כפילות, חוסר ושגיאה מסומנים');
+    await a.getByRole('button', { name: 'הוספת 1 לרשימה' }).click();
+    await a.waitForTimeout(400);
+    ok(JSON.stringify(a.__inserted) === JSON.stringify([{ name: 'מאיה פרץ', email: 'maya@gmail.com', phone: '972527654321' }]), 'הוספה: רק התקינים, וטלפון בפורמט וואטסאפ');
+    const [pop] = await Promise.all([a.waitForEvent('popup'), a.getByRole('button', { name: 'וואטסאפ לבא בתור' }).click()]);
+    await pop.waitForLoadState('domcontentloaded').catch(() => {});
+    const u = a.__wa || '';
+    ok(u.includes('972501234567') && u.includes('/#/join/tok1') && u.includes('שלום נועה'), 'וואטסאפ: הודעה אישית עם הקישור של נועה');
+    await pop.close();
+    await a.waitForTimeout(300);
+    ok(a.__patched && a.__patched.invited_via === 'whatsapp', 'השליחה נרשמת כ"הוזמנה בוואטסאפ"');
+    await a.locator('.chips .chip', { hasText: 'הצטרפו' }).click();
+    ok(await a.locator('table.roster:not(.mini) tbody tr').count() === 1, 'סינון "הצטרפו"');
+        ok(await a.evaluate(() => [...document.querySelectorAll('.press')].every((x) => getComputedStyle(x).borderTopColor === 'rgba(0, 0, 0, 0)')), 'כפתורים סמויים: בלי מסגרת גלויה');
+    await a.close();
+
     const cdp = await p.context().newCDPSession(p);
     const inst = await cdp.send('Page.getInstallabilityErrors');
     ok(inst.installabilityErrors.length === 0, 'התקנה: ' + (JSON.stringify(inst.installabilityErrors) || 'אין שגיאות'));
@@ -119,7 +179,7 @@ async function mock(p) {
     for (const vp of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
       const m = await b.newPage({ viewport: vp, reducedMotion: 'reduce' });
       await mock(m);
-      for (const h of ['', '#/intro', '#/t/a1?s=6', '#/t/b3?s=20', '#/gallery', '#/auth']) {
+      for (const h of ['', '#/intro', '#/t/a1?s=6', '#/t/b3?s=20', '#/gallery', '#/auth', '#/join/tok1']) {
         await m.goto(BASE + h, { waitUntil: 'networkidle' });
         const hs = await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
         ok(!hs, `${vp.width}px ${h || 'בית'}: בלי גלילה אופקית`);
