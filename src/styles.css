@@ -71,16 +71,17 @@ mark.hit { background: var(--marker); color: inherit; padding: 0 1px; }
 .field:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 textarea.field { resize: vertical; min-height: 90px; line-height: 1.7; }
 
-/* בוררים בלי מסגרת: טקסט עם צל, הנבחר בשחור ומודגש */
-.chips { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; min-width: 0; }
+/* בוררים נראים כמו כפתורים: רקע עדין, ריווח וצל, בלי קו מסגרת. הנבחר מלא בשחור (כללי ענת, 02.11 ו-03.11.2026) */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
 .chip {
-  text-decoration: none; font: inherit; font-size: 14px; border: 0; background: none; cursor: pointer; padding: 6px 10px; color: var(--ink-mute); border-radius: 0;
-  text-shadow: 0 1px 0 #fff, 0 2px 6px rgba(26, 26, 24, .12); transition: transform .15s, color .15s;
+  text-decoration: none; font: inherit; font-size: 14px; border: 0; cursor: pointer; padding: 5px 12px; border-radius: 0;
+  background: var(--rule-soft); color: var(--ink-soft); box-shadow: 0 1px 0 rgba(26, 26, 24, .06), 0 1px 3px rgba(26, 26, 24, .08);
+  transition: transform .15s, box-shadow .15s, background .15s, color .15s;
 }
-.chip:hover { transform: translateY(-2px); color: var(--ink-soft); }
-.chip:active { transform: translateY(1px); }
-.chip[aria-pressed="true"] { color: var(--ink); font-weight: 600; }
-.chip .num { font-weight: 500; font-size: 12px; margin-right: 6px; color: var(--ink-mute); }
+.chip:hover { transform: translateY(-2px); color: var(--ink); box-shadow: var(--shadow-2); }
+.chip:active { transform: translateY(1px); box-shadow: none; }
+.chip[aria-pressed="true"] { background: var(--ink); color: #fff; font-weight: 600; }
+.chip .num { font-weight: 500; font-size: 12px; margin-right: 6px; color: inherit; opacity: .7; }
 
 /* אייקוני תפעול קומפקטיים */
 .icon-btn {
@@ -398,7 +399,7 @@ main { flex: 1; min-width: 0; width: 100%; }
 .auth-form label { display: grid; gap: 6px; font-size: 14px; font-weight: 500; }
 .pass { position: relative; display: block; }
 .pass .field { padding-inline-start: 70px; }
-.pass-eye { position: absolute; inset-inline-start: 4px; top: 50%; transform: translateY(-50%); font-size: 13px; }
+.pass-eye { position: absolute; inset-inline-start: 6px; top: 50%; transform: translateY(-50%); font-size: 12px; padding: 3px 8px; }
 .pass-eye:hover { transform: translateY(calc(-50% - 2px)); }
 
 /* ניהול הכיתה */
