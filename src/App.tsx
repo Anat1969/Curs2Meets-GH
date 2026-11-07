@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { useRoute } from "./lib/route";
-import { AuthProvider } from "./lib/auth";
 import { Toaster } from "./lib/toast";
 import { course } from "./data/course";
 import TopBar from "./components/TopBar";
@@ -8,7 +7,6 @@ import Home from "./pages/Home";
 import IntroPage from "./pages/IntroPage";
 import TopicPage from "./pages/TopicPage";
 import GalleryPage from "./pages/GalleryPage";
-import AuthPage from "./pages/AuthPage";
 import JoinPage from "./pages/JoinPage";
 import ClassPage from "./pages/ClassPage";
 import NotFound from "./pages/NotFound";
@@ -22,7 +20,7 @@ function Page() {
   if (a === "intro") return <IntroPage />;
   if (a === "t" && b) return <TopicPage key={b} k={b} />;
   if (a === "gallery") return <GalleryPage />;
-  if (a === "auth") return <AuthPage />;
+  if (a === "auth") { location.replace("#/gallery"); return null; } // אין יותר כניסה: מעבירים לגלריה
   if (a === "join" && b) return <JoinPage token={b} />;
   if (a === "class") return <ClassPage />;
   return <NotFound />;
@@ -30,7 +28,7 @@ function Page() {
 
 export default function App() {
   return (
-    <AuthProvider>
+    <>
       <TopBar />
       <Page />
       <footer className="foot">
@@ -40,6 +38,6 @@ export default function App() {
         </div>
       </footer>
       <Toaster />
-    </AuthProvider>
+    </>
   );
 }

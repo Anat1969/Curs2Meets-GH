@@ -2,7 +2,6 @@
 // הזיהוי לפי טוקן בקישור, לא לפי אימייל: כל חשבון שפותח את הקישור משויך לשורה שלו.
 import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
-import { useAuth } from "./auth";
 
 export const APP_URL = "https://curs2meets-gh.vercel.app";
 export const joinLink = (token: string) => `${APP_URL}/#/join/${token}`;
@@ -12,20 +11,50 @@ export interface RosterRow {
   token: string; invited_at: string | null; invited_via: string | null; user_id: string | null; joined_at: string | null; created_at: string;
 }
 
-export function useMembership() {
-  const { user } = useAuth();
-  const [m, setM] = useState<{ admin: boolean; member: boolean; ready: boolean }>({ admin: false, member: false, ready: false });
+/* בלי סיסמה ובלי חשבון (בקשת ענת, 04.11.2026):
+   - מנהלת: הקישור האישי שלה שומר מפתח ניהול במכשיר.
+   - יוצר/ת: שם גלוי, ומפתח עריכה סמוי שנוצר במכשיר ומאפשר למחוק רק את העבודות שלו/ה. */
+const read = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
+const write = (k: string, v: string | null) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* מצב פרטי */ } };
+const emit = () => dispatchEvent(new Event("c2m-identity"));
+
+export function setAdminKey(k: string | null) { write("c2m:admin-key", k); emit(); }
+export function getAdminKey() { return read("c2m:admin-key"); }
+
+export function getAuthor(): { name: string; key: string } {
+  let key = read("c2m:author-key");
+  if (!key || key.length < 16) {
+    const a = new Uint8Array(16); crypto.getRandomValues(a);
+    key = [...a].map((b) => b.toString(16).padStart(2, "0")).join("");
+    write("c2m:author-key", key);
+  }
+  return { name: read("c2m:author-name") ?? "", key };
+}
+export function setAuthorName(n: string) { write("c2m:author-name", n.trim()); emit(); }
+export function myWorks(): string[] { try { return JSON.parse(read("c2m:my-works") ?? "[]"); } catch { return []; } }
+export function addMyWork(id: string) { write("c2m:my-works", JSON.stringify([...new Set([...myWorks(), id])])); emit(); }
+
+/* האם המפתח השמור במכשיר הוא מפתח מנהלת. נבדק מול השרת. */
+export function useAdmin() {
+  const [st, setSt] = useState<{ key: string | null; admin: boolean; ready: boolean }>({ key: getAdminKey(), admin: false, ready: false });
   useEffect(() => {
-    if (!user) { setM({ admin: false, member: false, ready: true }); return; }
     let live = true;
-    Promise.all([supabase.rpc("is_class_admin"), supabase.rpc("class_member")]).then(([a, b]) => {
-      if (live) setM({ admin: !!a.data, member: !!b.data, ready: true });
-    }).catch(() => live && setM({ admin: false, member: false, ready: true }));
-    const f = () => Promise.all([supabase.rpc("is_class_admin"), supabase.rpc("class_member")]).then(([a, b]) => setM({ admin: !!a.data, member: !!b.data, ready: true }));
-    addEventListener("class-joined", f);
-    return () => { live = false; removeEventListener("class-joined", f); };
-  }, [user]);
-  return m;
+    const check = () => {
+      const key = getAdminKey();
+      if (!key) { setSt({ key: null, admin: false, ready: true }); return; }
+      supabase.rpc("admin_check", { p_key: key }).then(({ data }) => live && setSt({ key, admin: !!data, ready: true }), () => live && setSt({ key, admin: false, ready: true }));
+    };
+    check();
+    addEventListener("c2m-identity", check);
+    return () => { live = false; removeEventListener("c2m-identity", check); };
+  }, []);
+  return st;
+}
+
+export function useIdentity() {
+  const [n, setN] = useState(0);
+  useEffect(() => { const f = () => setN((x) => x + 1); addEventListener("c2m-identity", f); return () => removeEventListener("c2m-identity", f); }, []);
+  return { ...getAuthor(), mine: myWorks(), tick: n };
 }
 
 /* טלפון ישראלי לפורמט בינלאומי: 050-123-4567 → 972501234567 */

@@ -7,31 +7,30 @@ const BASE = 'http://localhost:4198/';
 const menu = fs.readFileSync(__dirname + '/ai-menu.local.js', 'utf8');
 const fails = [];
 const ok = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if (!cond) fails.push(msg); };
-const SUB = [{ id: 'x1', user_id: 'u1', session_id: 'a', topic_id: '1', description: 'קולקציה בהשראת חוף אשדוד', image_url: BASE + 'slides/a1/06.webp', created_at: '2026-03-08T20:49:48Z' }];
+const SUB = [{ id: 'x1', user_id: null, author_name: 'נועה כהן', session_id: 'a', topic_id: '1', description: 'קולקציה בהשראת חוף אשדוד', image_url: BASE + 'slides/a1/06.webp', created_at: '2026-03-08T20:49:48Z' }];
 
 const ROSTER = [
   { id: 'r0', name: 'ענת שטיבלמן', email: null, phone: null, role: 'admin', token: 'adm', invited_at: null, invited_via: null, user_id: 'admin1', joined_at: '2026-11-03T10:00:00Z', created_at: '2026-11-03T09:00:00Z' },
   { id: 'r1', name: 'נועה כהן', email: 'noa@gmail.com', phone: '972501234567', role: 'student', token: 'tok1', invited_at: null, invited_via: null, user_id: null, joined_at: null, created_at: '2026-11-03T09:01:00Z' },
   { id: 'r2', name: 'דניאל לוי', email: 'daniel@gmail.com', phone: null, role: 'student', token: 'tok2', invited_at: '2026-11-03T09:30:00Z', invited_via: 'email', user_id: 'u2', joined_at: '2026-11-03T09:40:00Z', created_at: '2026-11-03T09:02:00Z' },
 ];
-const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
-const FAKE_JWT = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: 'admin1', email: 'anat@example.com', role: 'authenticated', aud: 'authenticated', exp: 4102444800 })}.sig`;
-const SESSION = { access_token: FAKE_JWT, refresh_token: 'r', token_type: 'bearer', expires_in: 3600, expires_at: 4102444800, user: { id: 'admin1', email: 'anat@example.com', aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {} } };
 
 async function mock(p) {
   await p.route('**/appofapp-gh.vercel.app/**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: menu }));
   await p.route('**/*.supabase.co/rest/v1/student_submissions**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SUB) }));
   await p.route('**/*.supabase.co/rest/v1/profiles**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ user_id: 'u1', display_name: 'נועה' }]) }));
-  await p.route('**/*.supabase.co/rest/v1/rpc/class_invite**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ name: 'נועה כהן', email: 'noa@gmail.com', role: 'student', joined: false }]) }));
-  await p.route('**/*.supabase.co/rest/v1/rpc/is_class_admin**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: String(!!p.__admin) }));
-  await p.route('**/*.supabase.co/rest/v1/rpc/class_member**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: String(!!p.__admin) }));
-  await p.route('**/*.supabase.co/rest/v1/class_roster**', (r) => {
-    const m = r.request().method();
-    if (m === 'GET') return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ROSTER) });
-    if (m === 'POST') { p.__inserted = JSON.parse(r.request().postData()); return r.fulfill({ status: 201, contentType: 'application/json', body: '[]' }); }
-    if (m === 'PATCH') { p.__patched = JSON.parse(r.request().postData()); return r.fulfill({ status: 204, body: '' }); }
-    return r.fulfill({ status: 204, body: '' });
-  });
+  const json = (r, body, status = 200) => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+  const rpc = (name, fn) => p.route(`**/*.supabase.co/rest/v1/rpc/${name}**`, (r) => { const body = JSON.parse(r.request().postData() || '{}'); (p.__rpc ||= {})[name] = body; return fn(r, body); });
+  await rpc('class_invite', (r, b) => json(r, b.p_token === 'adm' ? [{ name: 'ענת שטיבלמן', email: null, role: 'admin', joined: true }] : b.p_token === 'tok1' ? [{ name: 'נועה כהן', email: 'noa@gmail.com', role: 'student', joined: false }] : []));
+  await rpc('roster_open', (r) => r.fulfill({ status: 204, body: '' }));
+  await rpc('admin_check', (r, b) => json(r, b.p_key === 'adm'));
+  await rpc('roster_list', (r) => json(r, ROSTER));
+  await rpc('roster_add', (r) => json(r, 1));
+  await rpc('roster_mark', (r) => r.fulfill({ status: 204, body: '' }));
+  await rpc('roster_remove', (r) => r.fulfill({ status: 204, body: '' }));
+  await rpc('add_submission', (r) => json(r, 'new-work-id'));
+  await rpc('remove_submission', (r, b) => json(r, b.p_key.length === 32 || b.p_key === 'adm'));
+  await p.route('**/*.supabase.co/storage/v1/object/submissions/**', (r) => { p.__uploaded = r.request().url(); return json(r, { Key: 'submissions/open/x.jpg' }); });
   await p.route('**/*.supabase.co/auth/**', (r) => r.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_grant', error_description: 'Invalid login credentials', msg: 'Invalid login credentials' }) }));
 }
 
@@ -121,9 +120,8 @@ async function mock(p) {
     await p.locator('.chips .chip', { hasText: 'לוגי' }).click();
     ok(await p.locator('.gal-card').count() === 1, 'לחיצה על הנבחר מחזירה ל"הכול"');
     await p.goto(BASE + '#/auth', { waitUntil: 'networkidle' });
-    await p.locator('input[type=email]').fill('a@b.co'); await p.locator('input[type=password]').fill('123456');
-    await p.locator('form button[type=submit]').click();
-    ok(await p.waitForSelector('.msg.err', { timeout: 5000 }).then(() => true).catch(() => false), 'כניסה שגויה מסבירה מה לעשות');
+    await p.waitForFunction(() => location.hash === '#/gallery');
+    ok(true, 'אין יותר דף כניסה: הכתובת הישנה מעבירה לגלריה');
     await p.locator('.brand').click();
     await p.waitForFunction(() => location.hash === '#/' || location.hash === '');
     await p.waitForSelector('.kpi');
@@ -131,17 +129,38 @@ async function mock(p) {
     ok(await p.evaluate(() => [...document.querySelectorAll('button, .press, .field')].every((b) => getComputedStyle(b).borderRadius === '0px')), 'כל הכפתורים והשדות מרובעים');
     ok(await p.locator('.num').count() > 10, 'מספרים מודגשים אוטומטית');
 
-    // הזמנה אישית: הקישור מזהה את הסטודנטית וממלא את הטופס
+    // העלאה בלי סיסמה: שם, תיאור ותמונה
+    await p.goto(BASE + '#/t/a1', { waitUntil: 'networkidle' });
+    await p.waitForSelector('form.upload');
+    ok(await p.locator('input[type=password]').count() === 0, 'אין שדה סיסמה באפליקציה');
+    await p.locator('form.upload input[name=name]').fill('דנה לוי');
+    await p.locator('form.upload textarea').fill('קולקציה בהשראת הנמל');
+    await p.locator('form.upload input[type=file]').setInputFiles(require('path').join(__dirname, '../public/icon-192.png'));
+    await p.locator('form.upload button[type=submit]').click();
+    await p.waitForFunction(() => (localStorage.getItem('c2m:my-works') || '').includes('new-work-id'), null, { timeout: 6000 }).catch(() => {});
+    const add = p.__rpc.add_submission || {};
+    ok(add.p_name === 'דנה לוי' && add.p_session === 'a' && add.p_topic === '1' && /^[0-9a-f]{32}$/.test(add.p_key || ''), 'העלאה נשמרת תחת השם, עם מפתח עריכה סמוי');
+    ok((p.__uploaded || '').includes('/submissions/open/'), 'התמונה עולה לתיקייה הפתוחה');
+    ok(await p.evaluate(() => localStorage.getItem('c2m:author-name')) === 'דנה לוי', 'השם נזכר לפעם הבאה');
+    await p.evaluate(() => localStorage.setItem('c2m:my-works', JSON.stringify(['x1'])));
+    await p.reload({ waitUntil: 'networkidle' });
+    await p.waitForSelector('.gal-card');
+    ok(await p.locator('.gal-card .chip', { hasText: 'מחיקה' }).count() === 1, 'כפתור מחיקה רק לעבודה שהועלתה מהמכשיר הזה');
+    p.once('dialog', (d) => d.accept());
+    await p.locator('.gal-card .chip', { hasText: 'מחיקה' }).click();
+    await p.waitForTimeout(400);
+    ok((p.__rpc.remove_submission || {}).p_id === 'x1', 'מחיקה עם מפתח העריכה של המכשיר');
+
+    // קישור אישי של סטודנטית: בלי טופס, השם נשמר וממשיכים לקורס
+    await p.evaluate(() => localStorage.removeItem('c2m:author-name'));
     await p.goto(BASE + '#/join/tok1', { waitUntil: 'networkidle' });
-    await p.waitForSelector('.auth-form');
-    ok((await p.locator('h1').innerText()).includes('שלום נועה'), 'קישור אישי: פנייה בשם');
-    ok((await p.locator('input[name=email]').inputValue()) === 'noa@gmail.com' && (await p.locator('input[name=name]').inputValue()) === 'נועה כהן', 'קישור אישי: אימייל ושם ממולאים מראש');
-    ok((await p.locator('input[name=password]').getAttribute('autocomplete')) === 'new-password', 'קישור אישי: מילוי אוטומטי של Chrome לסיסמה חדשה');
-    await p.locator('input[name=password]').fill('abcdef');
-    await p.locator('.pass-eye').click();
-    ok((await p.locator('input[name=password]').getAttribute('type')) === 'text', 'כפתור הצגת סיסמה');
+    await p.waitForFunction(() => location.hash.startsWith('#/t/a1'), null, { timeout: 6000 }).catch(() => {});
+    ok(p.url().includes('#/t/a1') && (p.__rpc.roster_open || {}).p_token === 'tok1', 'קישור אישי: מסומן "פתח/ה" ומוביל לתחנה 1');
+    await p.waitForSelector('form.upload');
+    ok((await p.locator('form.upload input[name=name]').inputValue()) === 'נועה כהן', 'קישור אישי: השם ממולא בטופס ההעלאה');
     await p.goto(BASE + '#/class', { waitUntil: 'networkidle' });
-    ok(await p.getByText('הדף הזה למנהלת הכיתה בלבד').isVisible(), 'ניהול הכיתה חסום למי שאינו מנהל');
+    await p.waitForSelector('.empty');
+    ok(await p.getByText('הדף הזה למנהלת הכיתה בלבד').isVisible(), 'ניהול הכיתה חסום בלי קישור מנהלת');
 
     // מנהלת הכיתה: ייבוא, תצוגה מקדימה ושליחה
     const a = await b.newPage({ viewport: { width: 1440, height: 900 } });
@@ -149,26 +168,27 @@ async function mock(p) {
     await a.context().route('https://wa.me/**', (r) => { a.__wa = decodeURIComponent(r.request().url()); r.fulfill({ status: 200, contentType: 'text/html', body: 'ok' }); });
     await mock(a);
     a.on('pageerror', (e) => errors.push(e.message));
-    await a.addInitScript((s) => localStorage.setItem('sb-tnvwpjcilwmtigfxhomx-auth-token', JSON.stringify(s)), SESSION);
-    await a.goto(BASE + '#/class', { waitUntil: 'networkidle' });
+    await a.goto(BASE + '#/join/adm', { waitUntil: 'networkidle' });
+    await a.waitForFunction(() => location.hash === '#/class', null, { timeout: 6000 }).catch(() => {});
+    ok(await a.evaluate(() => localStorage.getItem('c2m:admin-key')) === 'adm', 'קישור מנהלת: הניהול נפתח במכשיר בלי סיסמה');
     await a.waitForSelector('#roster-paste', { timeout: 6000 }).catch(() => {});
     ok(await a.locator('#roster-paste').count() === 1, 'ניהול הכיתה נפתח למנהלת');
-    ok((await a.locator('.kpi-row b').allInnerTexts()).join(',') === '2,1,1', 'מספרי הכיתה: 2 ברשימה, 1 הוזמן, 1 הצטרף');
+    ok((await a.locator('.kpi-row b').allInnerTexts()).join(',') === '2,1,1', 'מספרי הכיתה: 2 ברשימה, 1 הוזמן, 1 פתח את הקישור');
     await a.locator('#roster-paste').fill('שם\tמייל\tטלפון\nמאיה פרץ\tmaya@gmail.com\t052-765-4321\nנועה כהן\tnoa@gmail.com\nיואב\t\t\nרון\tron@@x');
     const tags = await a.locator('.roster.mini td:last-child').allInnerTexts();
     ok(tags.join('|') === 'תקין|כבר ברשימה|חסר מייל או טלפון|מייל או טלפון לא תקינים', 'תצוגה מקדימה: תקין, כפילות, חוסר ושגיאה מסומנים');
     await a.getByRole('button', { name: 'הוספת 1 לרשימה' }).click();
     await a.waitForTimeout(400);
-    ok(JSON.stringify(a.__inserted) === JSON.stringify([{ name: 'מאיה פרץ', email: 'maya@gmail.com', phone: '972527654321' }]), 'הוספה: רק התקינים, וטלפון בפורמט וואטסאפ');
+    ok(JSON.stringify(a.__rpc.roster_add) === JSON.stringify({ p_key: 'adm', p_rows: [{ name: 'מאיה פרץ', email: 'maya@gmail.com', phone: '972527654321' }] }), 'הוספה: רק התקינים, וטלפון בפורמט וואטסאפ');
     const [pop] = await Promise.all([a.waitForEvent('popup'), a.getByRole('button', { name: 'וואטסאפ לבא בתור' }).click()]);
     await pop.waitForLoadState('domcontentloaded').catch(() => {});
     const u = a.__wa || '';
     ok(u.includes('972501234567') && u.includes('/#/join/tok1') && u.includes('שלום נועה'), 'וואטסאפ: הודעה אישית עם הקישור של נועה');
     await pop.close();
     await a.waitForTimeout(300);
-    ok(a.__patched && a.__patched.invited_via === 'whatsapp', 'השליחה נרשמת כ"הוזמנה בוואטסאפ"');
-    await a.locator('.chips .chip', { hasText: 'הצטרפו' }).click();
-    ok(await a.locator('table.roster:not(.mini) tbody tr').count() === 1, 'סינון "הצטרפו"');
+    ok(a.__rpc.roster_mark && a.__rpc.roster_mark.p_via === 'whatsapp' && a.__rpc.roster_mark.p_id === 'r1', 'השליחה נרשמת כ"הוזמנה בוואטסאפ"');
+    await a.locator('.chips .chip', { hasText: 'פתחו את הקישור' }).click();
+    ok(await a.locator('table.roster:not(.mini) tbody tr').count() === 1, 'סינון "פתחו את הקישור"');
         ok(await a.evaluate(() => [...document.querySelectorAll('.press')].every((x) => getComputedStyle(x).borderTopColor === 'rgba(0, 0, 0, 0)')), 'כפתורים סמויים: בלי מסגרת גלויה');
     await a.close();
 
@@ -179,7 +199,7 @@ async function mock(p) {
     for (const vp of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
       const m = await b.newPage({ viewport: vp, reducedMotion: 'reduce' });
       await mock(m);
-      for (const h of ['', '#/intro', '#/t/a1?s=6', '#/t/b3?s=20', '#/gallery', '#/auth', '#/join/tok1']) {
+      for (const h of ['', '#/intro', '#/t/a1?s=6', '#/t/b3?s=20', '#/gallery', '#/class']) {
         await m.goto(BASE + h, { waitUntil: 'networkidle' });
         const hs = await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
         ok(!hs, `${vp.width}px ${h || 'בית'}: בלי גלילה אופקית`);

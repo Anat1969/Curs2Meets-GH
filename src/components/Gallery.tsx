@@ -1,10 +1,10 @@
-// גלריית הכיתה: עבודות הסטודנטים מאותו בסיס נתונים. כולם רואים, רק מחובר/ת מעלה, רק הבעלים מוחק/ת.
+// גלריית הכיתה: כל אחד מעלה עבודה עם השם שלו, בלי סיסמה ובלי חשבון (בקשת ענת, 04.11.2026).
+// מחיקה: רק מהמכשיר שהעלה (מפתח עריכה סמוי), או על ידי מנהלת הכיתה.
 import { useCallback, useEffect, useState } from "react";
 import { supabase, fetchSubmissions, type Submission } from "../lib/supabase";
-import { useAuth } from "../lib/auth";
 import { toast } from "../lib/toast";
 import { topics } from "../data/course";
-import { useMembership } from "../lib/classroom";
+import { useAdmin, useIdentity, getAuthor, setAuthorName, addMyWork, getAdminKey } from "../lib/classroom";
 import { Close } from "./icons";
 
 const label = (s: Submission) => {
@@ -42,8 +42,8 @@ export function Lightbox({ s, onClose }: { s: Submission | null; onClose: () => 
 }
 
 export function Cards({ list, onOpen, onDelete, showTopic }: { list: Submission[]; onOpen: (s: Submission) => void; onDelete: (s: Submission) => void; showTopic?: boolean }) {
-  const { user } = useAuth();
-  const { admin } = useMembership();
+  const { admin } = useAdmin();
+  const { mine } = useIdentity();
   return (
     <div className="gal">
       {list.map((s) => (
@@ -52,8 +52,8 @@ export function Cards({ list, onOpen, onDelete, showTopic }: { list: Submission[
           <div className="in">
             <div className="meta"><b>{s.display_name}</b>{showTopic && <span>· {label(s)}</span>}<span className="when">{new Date(s.created_at).toLocaleDateString("he-IL")}</span></div>
             <p>{s.description}</p>
-            {(user?.id === s.user_id || admin) && (
-              <button className="press btn" style={{ justifySelf: "start", padding: "4px 10px", fontSize: 13 }}
+            {(mine.includes(s.id) || admin) && (
+              <button className="chip" style={{ justifySelf: "start", fontSize: 13 }}
                 onClick={(e) => { e.stopPropagation(); if (confirm("למחוק את העבודה? אי אפשר לשחזר.")) onDelete(s); }}>מחיקה</button>
             )}
           </div>
@@ -64,18 +64,26 @@ export function Cards({ list, onOpen, onDelete, showTopic }: { list: Submission[
 }
 
 export async function remove(s: Submission) {
-  const { error } = await supabase.from("student_submissions").delete().eq("id", s.id);
-  if (error) { toast("המחיקה נכשלה: " + error.message); return false; }
-  toast("העבודה נמחקה"); return true;
+  for (const k of [getAuthor().key, getAdminKey()].filter(Boolean) as string[]) {
+    const { data, error } = await supabase.rpc("remove_submission", { p_id: s.id, p_key: k });
+    if (!error && data) { toast("העבודה נמחקה"); return true; }
+  }
+  toast("המחיקה לא בוצעה. אפשר למחוק רק מהמכשיר שהעלה את העבודה, או מניהול הכיתה.");
+  return false;
 }
 
+const ERR: Record<string, string> = {
+  name: "כתבו שם של 2 עד 60 תווים.",
+  description: "כתבו תיאור קצר של העבודה.",
+  rate: "הרבה עבודות עלו בשעה האחרונה. נסו שוב בעוד כמה דקות.",
+};
+
 export default function TopicGallery({ session, topic }: { session: string; topic: string }) {
-  const { user } = useAuth();
-  const m = useMembership();
+  const me = useIdentity();
   const [list, setList] = useState<Submission[] | null>(null);
   const [err, setErr] = useState("");
   const [open, setOpen] = useState<Submission | null>(null);
-  const [name, setName] = useState("");
+  const [name, setName] = useState(me.name);
   const [desc, setDesc] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -86,49 +94,39 @@ export default function TopicGallery({ session, topic }: { session: string; topi
       .catch(() => { setList([]); setErr("הגלריה לא נטענה. בדקו חיבור לאינטרנט ורעננו את הדף."); });
   }, [session, topic]);
   useEffect(load, [load]);
-  useEffect(() => {
-    if (!user) return;
-    supabase.from("profiles").select("display_name").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => { if (data?.display_name && !String(data.display_name).includes("@")) setName(data.display_name); });
-  }, [user]);
+  useEffect(() => { if (!name && me.name) setName(me.name); }, [me.name]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const submit = async () => {
-    if (!user || !file || !desc.trim() || !name.trim()) { toast("חסר שם, תיאור או תמונה"); return; }
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file || desc.trim().length < 2 || name.trim().length < 2) { toast("חסר שם, תיאור או תמונה"); return; }
     setBusy(true);
-    await supabase.from("profiles").update({ display_name: name.trim() }).eq("user_id", user.id);
-    const path = `${user.id}/${Date.now()}.jpg`;
+    setAuthorName(name);
+    const rnd = crypto.getRandomValues(new Uint32Array(2)).join("");
+    const path = `open/${Date.now()}-${rnd}.jpg`;
     const { error: up } = await supabase.storage.from("submissions").upload(path, await shrink(file), { contentType: "image/jpeg" });
     if (up) { toast("העלאת התמונה נכשלה: " + up.message); setBusy(false); return; }
     const url = supabase.storage.from("submissions").getPublicUrl(path).data.publicUrl;
-    const { error } = await supabase.from("student_submissions").insert({ user_id: user.id, session_id: session, topic_id: topic, description: desc.trim(), image_url: url });
-    if (error) toast("השמירה נכשלה: " + error.message);
-    else { toast("התרגיל עלה לגלריה"); setDesc(""); setFile(null); setPreview(null); load(); }
+    const { data, error } = await supabase.rpc("add_submission", { p_name: name.trim(), p_session: session, p_topic: topic, p_description: desc.trim(), p_image_url: url, p_key: getAuthor().key });
+    if (error) toast(ERR[(error.message.match(/name|description|rate/) ?? [""])[0]] ?? "השמירה נכשלה. נסו שוב.");
+    else { addMyWork(String(data)); toast("העבודה עלתה לגלריה, תחת השם " + name.trim()); setDesc(""); setFile(null); setPreview(null); load(); }
     setBusy(false);
   };
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      {user && m.ready && !m.member ? (
-        <div className="tone tone-neutral"><p style={{ margin: 0 }}><b>החשבון עוד לא משויך לכיתה.</b><br />פתחו את הקישור האישי שקיבלתם מענת בוואטסאפ או במייל, והעלאה תיפתח.</p></div>
-      ) : user ? (
-        <div className="card upload">
-          <div style={{ display: "grid", gap: 10 }}>
-            <b>שתפו את התרגיל שלכם</b>
-            <input className="field" placeholder="השם שיופיע בגלריה" value={name} maxLength={50} onChange={(e) => setName(e.target.value)} aria-label="השם שיופיע בגלריה" />
-            <textarea className="field" placeholder="מה עשיתם? איזה פרומפט עבד?" value={desc} onChange={(e) => setDesc(e.target.value)} aria-label="תיאור התרגיל" />
-            <div><button className="press btn btn-main" onClick={submit} disabled={busy || !file || !desc.trim() || !name.trim()}>{busy ? "מעלה…" : "שיתוף בגלריה"}</button></div>
-          </div>
-          <label className="drop">
-            {preview ? <img src={preview} alt="תצוגה מקדימה" /> : <span>בחירת תמונה<br /><small className="src">התמונה נדחסת לפני ההעלאה</small></span>}
-            <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) { setFile(f); setPreview(URL.createObjectURL(f)); } }} />
-          </label>
+      <form className="card upload" onSubmit={submit}>
+        <div style={{ display: "grid", gap: 10 }}>
+          <b>העלו את העבודה שלכם</b>
+          <span className="src">בלי סיסמה ובלי הרשמה. העבודה נשמרת תחת השם שכתבתם, וכולם רואים אותה בגלריה.</span>
+          <input className="field" name="name" autoComplete="name" placeholder="השם שלכם" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} aria-label="השם שלכם" />
+          <textarea className="field" placeholder="מה עשיתם? איזה פרומפט עבד?" value={desc} maxLength={1500} onChange={(e) => setDesc(e.target.value)} aria-label="תיאור העבודה" />
+          <div><button className="press btn btn-main" type="submit" disabled={busy || !file || desc.trim().length < 2 || name.trim().length < 2}>{busy ? "מעלה…" : "העלאה לגלריה"}</button></div>
         </div>
-      ) : (
-        <div className="tone tone-neutral" style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-          <p style={{ margin: 0 }}>הצפייה פתוחה לכולם.<br />כדי להעלות תרגיל, פותחים את הקישור האישי מענת, או נכנסים כאן אם כבר הצטרפתם.</p>
-          <a className="press btn btn-main" href="#/auth">כניסה לסטודנטים</a>
-        </div>
-      )}
+        <label className="drop">
+          {preview ? <img src={preview} alt="תצוגה מקדימה" /> : <span>בחירת תמונה<br /><small className="src">מהמחשב או מהטלפון. התמונה נדחסת לפני ההעלאה</small></span>}
+          <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) { setFile(f); setPreview(URL.createObjectURL(f)); } }} />
+        </label>
+      </form>
       <p className="label" style={{ margin: 0 }}>{list === null ? "טוען עבודות…" : <><bdi className="num">{list.length}</bdi> עבודות בתחנה הזו</>}</p>
       {err && <div className="msg err">{err}</div>}
       {list && list.length === 0 && !err && <div className="empty"><b>עדיין אין עבודות בתחנה הזו.</b><span>העבודה הראשונה שתעלה תפתח את הגלריה לכל הכיתה.</span></div>}

@@ -1,21 +1,20 @@
 // ניהול הכיתה (למנהלת בלבד): ייבוא רשימה, קישור אישי לכל אחד, שליחה בוואטסאפ או במייל, ומעקב הצטרפות.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { useAuth } from "../lib/auth";
 import { useSaved } from "../lib/store";
 import { toast } from "../lib/toast";
 import {
-  useMembership, parseRoster, prettyPhone, fill, waLink, mailLink, joinLink, toCsv, DEFAULT_MESSAGE,
+  useAdmin, setAdminKey, parseRoster, prettyPhone, fill, waLink, mailLink, joinLink, toCsv, DEFAULT_MESSAGE,
   type RosterRow, type Parsed,
 } from "../lib/classroom";
 
 type Filter = "all" | "new" | "invited" | "joined";
 const status = (r: RosterRow): Exclude<Filter, "all"> => (r.joined_at ? "joined" : r.invited_at ? "invited" : "new");
-const STATUS_NAME = { new: "לא הוזמנו", invited: "הוזמנו", joined: "הצטרפו" } as const;
+const STATUS_NAME = { new: "לא הוזמנו", invited: "הוזמנו", joined: "פתחו את הקישור" } as const;
 
 export default function ClassPage() {
-  const { user, ready } = useAuth();
-  const m = useMembership();
+  const m = useAdmin();
+  const key = m.key ?? "";
   const [rows, setRows] = useState<RosterRow[] | null>(null);
   const [paste, setPaste] = useState("");
   const [tpl, setTpl, tplSaved] = useSaved<string>("class:message", DEFAULT_MESSAGE);
@@ -24,10 +23,10 @@ export default function ClassPage() {
   useEffect(() => { document.title = "ניהול הכיתה · מכלי לשותף"; }, []);
 
   const load = useCallback(() => {
-    supabase.from("class_roster").select("*").order("created_at").then(({ data, error }) => {
+    supabase.rpc("roster_list", { p_key: key }).then(({ data, error }) => {
       if (error) { toast("הרשימה לא נטענה: " + error.message); setRows([]); } else setRows((data ?? []) as RosterRow[]);
     });
-  }, []);
+  }, [key]);
   useEffect(() => { if (m.admin) load(); }, [m.admin, load]);
 
   const parsed = useMemo(() => parseRoster(paste), [paste]);
@@ -37,7 +36,7 @@ export default function ClassPage() {
 
   const add = async () => {
     setBusy(true);
-    const { error } = await supabase.from("class_roster").insert(good.map((p) => ({ name: p.name, email: p.email, phone: p.phone })));
+    const { error } = await supabase.rpc("roster_add", { p_key: key, p_rows: good.map((p) => ({ name: p.name, email: p.email ?? "", phone: p.phone ?? "" })) });
     setBusy(false);
     if (error) { toast("ההוספה נכשלה: " + error.message); return; }
     toast(`${good.length} נוספו לרשימה`); setPaste(""); load();
@@ -47,7 +46,7 @@ export default function ClassPage() {
     if (r.invited_at) return;
     const now = new Date().toISOString();
     setRows((rs) => rs?.map((x) => (x.id === r.id ? { ...x, invited_at: now, invited_via: via } : x)) ?? rs);
-    await supabase.from("class_roster").update({ invited_at: now, invited_via: via }).eq("id", r.id);
+    await supabase.rpc("roster_mark", { p_key: key, p_id: r.id, p_via: via });
   };
   const open = (r: RosterRow, via: "whatsapp" | "email") => {
     const text = fill(tpl, r);
@@ -60,7 +59,7 @@ export default function ClassPage() {
   };
   const remove = async (r: RosterRow) => {
     if (!confirm(`להסיר את ${r.name} מהרשימה? הקישור האישי יפסיק לעבוד.`)) return;
-    const { error } = await supabase.from("class_roster").delete().eq("id", r.id);
+    const { error } = await supabase.rpc("roster_remove", { p_key: key, p_id: r.id });
     if (error) toast("ההסרה נכשלה: " + error.message); else { toast(`${r.name} הוסר/ה`); load(); }
   };
   const nextWa = () => {
@@ -74,11 +73,11 @@ export default function ClassPage() {
   };
   const readFile = (f: File) => f.text().then(setPaste);
 
-  if (!ready || (user && !m.ready)) return <main className="page"><p className="label">בודק הרשאה…</p></main>;
+  if (!m.ready) return <main className="page"><p className="label">בודק הרשאה…</p></main>;
   if (!m.admin) return (
     <main className="page"><div className="empty" style={{ marginTop: 40 }}>
       <b>הדף הזה למנהלת הכיתה בלבד.</b>
-      <span>{user ? "החשבון הזה לא מוגדר כמנהל. פתחי את קישור המנהלת האישי שלך." : <>צריך להיכנס קודם. <a href="#/auth">לכניסה</a>.</>}</span>
+      <span>פתחי פעם אחת את קישור המנהלת האישי שלך, והניהול ייפתח במכשיר הזה. בלי סיסמה.</span>
     </div></main>
   );
 
@@ -90,12 +89,12 @@ export default function ClassPage() {
     <main className="page">
       <div className="crumbs"><a href="#/">מכלי לשותף</a> / ניהול הכיתה</div>
       <h1 className="page-title">ניהול הכיתה: מרשימה לכיתה בשלושה צעדים.</h1>
-      <p className="page-sub">מדביקים רשימה, שולחים לכל אחד קישור אישי, ורואים מי הצטרף.<br />הקישור מכניס בלי לזכור שום דבר: בפעם הראשונה בוחרים סיסמה, ו-Chrome שומר אותה.</p>
+      <p className="page-sub">מדביקים רשימה, שולחים לכל אחד קישור אישי, ורואים מי פתח אותו.<br />בלי סיסמה ובלי הרשמה: הקישור שומר את השם במכשיר, והעבודות עולות תחת השם הזה.<br /><span className="src">הניהול פתוח במכשיר הזה בזכות הקישור האישי שלך. <button className="chip muted" onClick={() => { setAdminKey(null); }}>סגירת הניהול במכשיר הזה</button></span></p>
 
       <div className="kpi-row" aria-label="הכיתה במספרים">
         <div><b>{counts.all}</b><span>ברשימה</span></div>
         <div><b>{counts.invited + counts.joined}</b><span>הוזמנו</span></div>
-        <div className="ok"><b>{counts.joined}</b><span>הצטרפו</span></div>
+        <div className="ok"><b>{counts.joined}</b><span>פתחו את הקישור</span></div>
       </div>
 
       <section className="section" id="import">
@@ -154,7 +153,7 @@ export default function ClassPage() {
       </section>
 
       <section className="section" id="list">
-        <div className="section-head"><span className="section-no">3</span><h2>מי הצטרף</h2>
+        <div className="section-head"><span className="section-no">3</span><h2>מי פתח את הקישור</h2>
           <div className="chips" role="group" aria-label="סינון לפי מצב" style={{ marginInlineStart: "auto" }}>
             {(["all", "new", "invited", "joined"] as Filter[]).map((f) => (
               <button key={f} className="chip" aria-pressed={filter === f} onClick={() => setFilter(filter === f && f !== "all" ? "all" : f)}>{f === "all" ? "הכול" : STATUS_NAME[f]}<bdi className="num">{counts[f]}</bdi></button>

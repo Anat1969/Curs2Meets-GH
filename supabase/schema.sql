@@ -49,3 +49,9 @@ create table public.class_roster (
 -- ו-class_claim(token) למחוברים בלבד: משייכת את החשבון לשורה, ומנהלת מקבלת שורה ב-class_admins.
 -- מדיניות: מנהלת מנהלת את הרשימה, סטודנט/ית רואה רק את השורה שלו/ה,
 -- "Only class members add submissions" (restrictive, insert), ומנהלת יכולה למחוק כל עבודה.
+
+-- 07.11.2026: בלי סיסמה ובלי חשבון (בקשת ענת).
+-- student_submissions: user_id ניתן לריק, ועמודה author_name. submission_keys(submission_id, key_hash) בלי מדיניות קריאה.
+-- פונקציות security definer: add_submission(שם, מפגש, תחנה, תיאור, תמונה מ-open/, מפתח), remove_submission(id, מפתח),
+-- admin_check(מפתח), roster_list/roster_add/roster_mark/roster_remove(מפתח, ...), roster_open(טוקן).
+-- אחסון: מדיניות "Anyone uploads images to open folder", ודלי submissions מוגבל לתמונות עד 8MB.
