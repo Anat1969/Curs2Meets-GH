@@ -394,6 +394,11 @@ main { flex: 1; min-width: 0; width: 100%; }
 .foot { border-top: 1px solid var(--rule); padding: 20px 24px 28px; font-size: 13px; color: var(--ink-mute); }
 .foot-in { max-width: 1800px; margin: 0 auto; display: flex; gap: 8px 24px; flex-wrap: wrap; justify-content: space-between; }
 
+/* מספר תחנה גלוי */
+.station-tag { display: inline-block; font-family: var(--mono); font-size: .45em; font-weight: 600; letter-spacing: .04em; color: #fff; background: var(--accent); padding: 3px 8px; margin-inline-end: 10px; vertical-align: middle; }
+.map-card .station-tag { font-size: 12px; margin: 0; }
+.topic-head .btn-main { margin-top: 4px; }
+
 /* כניסה והצטרפות */
 .auth-form { display: grid; gap: 14px; }
 .auth-form label { display: grid; gap: 6px; font-size: 14px; font-weight: 500; }
@@ -463,6 +468,7 @@ main { flex: 1; min-width: 0; width: 100%; }
   .cake { grid-template-columns: minmax(0, 1fr); }
   .cake svg { max-width: 300px; margin: 0 auto; }
   .upload { grid-template-columns: minmax(0, 1fr); }
+  .upload .drop { order: -1; min-height: 120px; }
   .topic-head { grid-template-columns: minmax(0, 1fr); }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .legend { grid-template-columns: minmax(0, 1fr); }

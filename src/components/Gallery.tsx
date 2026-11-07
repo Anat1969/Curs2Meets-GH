@@ -78,23 +78,16 @@ const ERR: Record<string, string> = {
   rate: "הרבה עבודות עלו בשעה האחרונה. נסו שוב בעוד כמה דקות.",
 };
 
-export default function TopicGallery({ session, topic }: { session: string; topic: string }) {
+export function UploadForm({ session, topic, onDone, picker }: { session: string; topic: string; onDone: () => void; picker?: React.ReactNode }) {
   const me = useIdentity();
-  const [list, setList] = useState<Submission[] | null>(null);
-  const [err, setErr] = useState("");
-  const [open, setOpen] = useState<Submission | null>(null);
   const [name, setName] = useState(me.name);
   const [desc, setDesc] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const load = useCallback(() => {
-    fetchSubmissions({ session, topic }).then((l) => { setList(l); setErr(""); })
-      .catch(() => { setList([]); setErr("הגלריה לא נטענה. בדקו חיבור לאינטרנט ורעננו את הדף."); });
-  }, [session, topic]);
-  useEffect(load, [load]);
   useEffect(() => { if (!name && me.name) setName(me.name); }, [me.name]); // eslint-disable-line react-hooks/exhaustive-deps
+  const station = topics.find((t) => t.session === session && String(t.n) === topic);
+  const no = station ? topics.indexOf(station) + 1 : 0;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,25 +101,42 @@ export default function TopicGallery({ session, topic }: { session: string; topi
     const url = supabase.storage.from("submissions").getPublicUrl(path).data.publicUrl;
     const { data, error } = await supabase.rpc("add_submission", { p_name: name.trim(), p_session: session, p_topic: topic, p_description: desc.trim(), p_image_url: url, p_key: getAuthor().key });
     if (error) toast(ERR[(error.message.match(/name|description|rate/) ?? [""])[0]] ?? "השמירה נכשלה. נסו שוב.");
-    else { addMyWork(String(data)); toast("העבודה עלתה לגלריה, תחת השם " + name.trim()); setDesc(""); setFile(null); setPreview(null); load(); }
+    else { addMyWork(String(data)); toast(`העבודה עלתה לתחנה ${no}, תחת השם ${name.trim()}`); setDesc(""); setFile(null); setPreview(null); onDone(); }
     setBusy(false);
   };
 
   return (
+    <form className="card upload" id="upload" onSubmit={submit}>
+      <div style={{ display: "grid", gap: 10 }}>
+        <b style={{ fontSize: 18 }}>העלאת עבודה{station ? ` לתחנה ${no}: ${station.title}` : ""}</b>
+        <span className="src">בלי סיסמה ובלי הרשמה. העבודה נשמרת תחת השם שכתבתם, וכולם רואים אותה בגלריה.</span>
+        {picker}
+        <input className="field" name="name" autoComplete="name" placeholder="השם שלכם" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} aria-label="השם שלכם" />
+        <textarea className="field" placeholder="מה עשיתם? איזה פרומפט עבד?" value={desc} maxLength={1500} onChange={(e) => setDesc(e.target.value)} aria-label="תיאור העבודה" />
+        <div><button className="press btn btn-main" type="submit" disabled={busy || !file || desc.trim().length < 2 || name.trim().length < 2}>{busy ? "מעלה…" : "העלאה לגלריה"}</button></div>
+      </div>
+      <label className="drop">
+        {preview ? <img src={preview} alt="תצוגה מקדימה" /> : <span>בחירת תמונה<br /><small className="src">מהמחשב או מהטלפון. התמונה נדחסת לפני ההעלאה</small></span>}
+        <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) { setFile(f); setPreview(URL.createObjectURL(f)); } }} />
+      </label>
+    </form>
+  );
+}
+
+export default function TopicGallery({ session, topic }: { session: string; topic: string }) {
+  const [list, setList] = useState<Submission[] | null>(null);
+  const [err, setErr] = useState("");
+  const [open, setOpen] = useState<Submission | null>(null);
+
+  const load = useCallback(() => {
+    fetchSubmissions({ session, topic }).then((l) => { setList(l); setErr(""); })
+      .catch(() => { setList([]); setErr("הגלריה לא נטענה. בדקו חיבור לאינטרנט ורעננו את הדף."); });
+  }, [session, topic]);
+  useEffect(load, [load]);
+
+  return (
     <div style={{ display: "grid", gap: 20 }}>
-      <form className="card upload" onSubmit={submit}>
-        <div style={{ display: "grid", gap: 10 }}>
-          <b>העלו את העבודה שלכם</b>
-          <span className="src">בלי סיסמה ובלי הרשמה. העבודה נשמרת תחת השם שכתבתם, וכולם רואים אותה בגלריה.</span>
-          <input className="field" name="name" autoComplete="name" placeholder="השם שלכם" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} aria-label="השם שלכם" />
-          <textarea className="field" placeholder="מה עשיתם? איזה פרומפט עבד?" value={desc} maxLength={1500} onChange={(e) => setDesc(e.target.value)} aria-label="תיאור העבודה" />
-          <div><button className="press btn btn-main" type="submit" disabled={busy || !file || desc.trim().length < 2 || name.trim().length < 2}>{busy ? "מעלה…" : "העלאה לגלריה"}</button></div>
-        </div>
-        <label className="drop">
-          {preview ? <img src={preview} alt="תצוגה מקדימה" /> : <span>בחירת תמונה<br /><small className="src">מהמחשב או מהטלפון. התמונה נדחסת לפני ההעלאה</small></span>}
-          <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) { setFile(f); setPreview(URL.createObjectURL(f)); } }} />
-        </label>
-      </form>
+      <UploadForm session={session} topic={topic} onDone={load} />
       <p className="label" style={{ margin: 0 }}>{list === null ? "טוען עבודות…" : <><bdi className="num">{list.length}</bdi> עבודות בתחנה הזו</>}</p>
       {err && <div className="msg err">{err}</div>}
       {list && list.length === 0 && !err && <div className="empty"><b>עדיין אין עבודות בתחנה הזו.</b><span>העבודה הראשונה שתעלה תפתח את הגלריה לכל הכיתה.</span></div>}

@@ -20,9 +20,9 @@ export default function TopBar() {
 
   const tabs = [
     { id: "intro", label: "הקדמה", to: "/intro", color: "var(--wine)" },
-    { id: "a", label: "מפגש א׳ · ככלי", to: "/t/a1", color: "var(--lake)" },
-    { id: "b", label: "מפגש ב׳ · כמחולל", to: "/t/b1", color: "var(--ember)" },
-    { id: "gallery", label: "גלריית הכיתה", to: "/gallery", color: "var(--ink)" },
+    { id: "a", label: "תחנות 1–3 · ככלי", to: "/t/a1", color: "var(--lake)" },
+    { id: "b", label: "תחנות 4–6 · כמחולל", to: "/t/b1", color: "var(--ember)" },
+    { id: "gallery", label: "העלאה וגלריה", to: "/gallery", color: "var(--ink)" },
   ];
 
   return (

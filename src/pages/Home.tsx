@@ -86,7 +86,7 @@ export default function Home() {
                     <div className="body">
                       <div className="row1">
                         <span className="topic-ico" style={{ color: s.color }}><TopicIcon k={t.key} /></span>
-                        <h3>{t.title}</h3><span className="sub">{t.subtitle}</span>
+                        <span className="station-tag">תחנה {topics.indexOf(t) + 1}</span><h3>{t.title}</h3><span className="sub">{t.subtitle}</span>
                         <span className="count"><bdi className="num">{slides[t.key].length}</bdi> שקופיות</span>
                       </div>
                       <Rich as="p">{`**${t.insight}**`}</Rich>

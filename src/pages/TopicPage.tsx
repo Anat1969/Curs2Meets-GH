@@ -9,7 +9,7 @@ import Rich from "../components/Rich";
 import { TopicIcon } from "../components/icons";
 import NotFound from "./NotFound";
 
-const SECTIONS = [["slides", "השקופיות"], ["exercise", "התרגיל"], ["lab", "מעבדת פרומפט"], ["knowledge", "ידע והשראה"], ["gallery", "גלריה"]] as const;
+const SECTIONS = [["slides", "השקופיות"], ["exercise", "התרגיל"], ["lab", "מעבדת פרומפט"], ["knowledge", "ידע והשראה"], ["gallery", "העלאת עבודה"]] as const;
 
 export default function TopicPage({ k }: { k: string }) {
   const i = topics.findIndex((t) => t.key === k);
@@ -27,13 +27,14 @@ export default function TopicPage({ k }: { k: string }) {
           <div className="crumbs"><a href="#/">מכלי לשותף</a> / <a href={`#/t/${siblings[0].key}`}>מפגש {s.letter}: {s.title}</a> / תחנה {i + 1}</div>
           <div className="who">
             <span className="topic-ico" style={{ color: s.color, width: 44, height: 44 }}><TopicIcon k={t.key as LessonKey} /></span>
-            <h1 className="page-title">{t.title}: {t.subtitle}</h1>
+            <h1 className="page-title"><span className="station-tag">תחנה {i + 1}</span>{t.title}: {t.subtitle}</h1>
           </div>
           <Rich as="p" className="page-sub">{`==${t.insight}== ${t.description}`}</Rich>
+          <button className="press btn btn-main" onClick={() => document.getElementById("gallery")?.scrollIntoView({ behavior: "smooth", block: "start" })}>העלאת עבודה לתחנה {i + 1}</button>
         </div>
         <nav className="chips" aria-label={`תחנות מפגש ${s.letter}`}>
           {siblings.map((x) => (
-            <a key={x.key} className="chip" href={`#/t/${x.key}`} aria-pressed={x.key === t.key}>{x.n}. {x.title}<bdi className="num">{slides[x.key].length}</bdi></a>
+            <a key={x.key} className="chip" href={`#/t/${x.key}`} aria-pressed={x.key === t.key}>תחנה {topics.indexOf(x) + 1} · {x.title}<bdi className="num">{slides[x.key].length}</bdi></a>
           ))}
         </nav>
       </div>
@@ -65,7 +66,7 @@ export default function TopicPage({ k }: { k: string }) {
       </section>
 
       <section className="section" id="gallery">
-        <div className="section-head"><span className="section-no">5</span><h2>גלריית התחנה</h2><span className="label">עבודות הכיתה</span></div>
+        <div className="section-head"><span className="section-no">5</span><h2>העלאת עבודה וגלריית התחנה</h2><span className="label">בלי סיסמה</span></div>
         <TopicGallery session={t.session} topic={String(t.n)} />
       </section>
 

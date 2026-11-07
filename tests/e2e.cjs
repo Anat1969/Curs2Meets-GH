@@ -115,9 +115,12 @@ async function mock(p) {
     await p.goto(BASE + '#/gallery', { waitUntil: 'networkidle' });
     await p.waitForSelector('.gal-card', { timeout: 4000 }).catch(() => {});
     ok(await p.locator('.gal-card').count() === 1, 'גלריית הכיתה נטענת');
-    await p.locator('.chips .chip', { hasText: 'לוגי' }).click();
+    ok(await p.locator('form#upload [aria-label="לאיזו תחנה"] .chip').count() === 6, 'העלאה מהגלריה: בחירה מבין 6 תחנות');
+    await p.locator('form#upload [aria-label="לאיזו תחנה"] .chip', { hasText: '5 · לוגי' }).click();
+    ok((await p.locator('form#upload b').first().innerText()).includes('לתחנה 5'), 'העלאה מהגלריה: הכותרת אומרת לאיזו תחנה');
+    await p.locator('[aria-label="תחנה"] .chip', { hasText: 'לוגי' }).click();
     ok(await p.getByText('אין עבודות בבחירה הזו').isVisible(), 'בורר תחנה מסנן, ומצב ריק מוסבר');
-    await p.locator('.chips .chip', { hasText: 'לוגי' }).click();
+    await p.locator('[aria-label="תחנה"] .chip', { hasText: 'לוגי' }).click();
     ok(await p.locator('.gal-card').count() === 1, 'לחיצה על הנבחר מחזירה ל"הכול"');
     await p.goto(BASE + '#/auth', { waitUntil: 'networkidle' });
     await p.waitForFunction(() => location.hash === '#/gallery');
@@ -132,6 +135,10 @@ async function mock(p) {
     // העלאה בלי סיסמה: שם, תיאור ותמונה
     await p.goto(BASE + '#/t/a1', { waitUntil: 'networkidle' });
     await p.waitForSelector('form.upload');
+    ok((await p.locator('h1').innerText()).includes('תחנה 1'), 'מספר התחנה גלוי בכותרת');
+    await p.getByRole('button', { name: 'העלאת עבודה לתחנה 1' }).click();
+    await p.waitForTimeout(900);
+    ok(await p.evaluate(() => { const r = document.querySelector('form#upload').getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }), 'כפתור "העלאת עבודה" גולל אל הטופס');
     ok(await p.locator('input[type=password]').count() === 0, 'אין שדה סיסמה באפליקציה');
     await p.locator('form.upload input[name=name]').fill('דנה לוי');
     await p.locator('form.upload textarea').fill('קולקציה בהשראת הנמל');
